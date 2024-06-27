@@ -1,0 +1,4 @@
+numpy
+opencv-python
+dlib==19.22.0
+face-recognition
