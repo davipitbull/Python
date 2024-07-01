@@ -1,20 +1,21 @@
 import cv2
-import tensorflow as tf
 import numpy as np
+import tensorflow as tf
 
-# Carregar modelo pré-treinado
-model = tf.saved_model.load('dataset/capacetes')
+# Carregar o modelo pré-treinado (MobileNet SSD treinado no COCO dataset)
+model_path = 'ssd_mobilenet_v2_fpnlite_320x320_coco17_tpu-8/saved_model'
+model = tf.saved_model.load(model_path)
 
-# Função para realizar a detecção
-def detect_helmet(image):
-    input_tensor = tf.convert_to_tensor(image)
-    input_tensor = input_tensor[tf.newaxis,...]
+# IDs das classes que representam capacetes (exemplo fictício)
+helmet_class_ids = [1]  # Verifique o ID correto para capacetes no seu modelo/dataset
 
+# Função para fazer a detecção de objetos
+def detect_objects(image):
+    input_tensor = tf.convert_to_tensor([image], dtype=tf.uint8)
     detections = model(input_tensor)
-
     return detections
 
-# Capturar vídeo da webcam
+# Iniciar a captura de vídeo
 cap = cv2.VideoCapture(0)
 
 while True:
@@ -22,22 +23,41 @@ while True:
     if not ret:
         break
 
-    # Realizar a detecção no frame capturado
-    detections = detect_helmet(frame)
+    # Preparar a imagem
+    input_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    input_image = cv2.resize(input_image, (300, 300))
 
-    # Processar as detecções e desenhar caixas delimitadoras
-    for detection in detections['detection_boxes']:
-        ymin, xmin, ymax, xmax = detection
-        (left, right, top, bottom) = (xmin * frame.shape[1], xmax * frame.shape[1],
-                                      ymin * frame.shape[0], ymax * frame.shape[0])
-        cv2.rectangle(frame, (int(left), int(top)), (int(right), int(bottom)), (0, 255, 0), 2)
+    # Fazer a detecção de objetos
+    detections = detect_objects(input_image)
 
-    # Mostrar o frame com as detecções
-    cv2.imshow('Detecção de Capacete', frame)
+    # Processar as detecções
+    for i in range(int(detections['num_detections'][0])):
+        score = detections['detection_scores'][0][i].numpy()
+        if score < 0.5:  # Aumentar o threshold de confiança se necessário
+            continue
+
+        class_id = int(detections['detection_classes'][0][i].numpy())
+        bbox = detections['detection_boxes'][0][i].numpy()
+
+        # Verificar se a detecção é um capacete
+        if class_id in helmet_class_ids:
+            h, w, _ = frame.shape
+            y_min, x_min, y_max, x_max = bbox
+            x_min = int(x_min * w)
+            x_max = int(x_max * w)
+            y_min = int(y_min * h)
+            y_max = int(y_max * h)
+
+            # Desenhar a caixa delimitadora
+            cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
+            cv2.putText(frame, 'Capacete', (x_min, y_min - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+
+    # Mostrar a imagem
+    cv2.imshow('Detecção de Capacetes', frame)
 
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
-# Liberar recursos
+# Liberar a captura de vídeo e fechar as janelas
 cap.release()
 cv2.destroyAllWindows()
